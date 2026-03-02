@@ -1,0 +1,36 @@
+engine: http
+
+targets:
+  - url: http://localhost:8081/api/endpoint?id={{id}}
+    method: POST
+    timeout: 5s
+    body: '{}'
+    headers:
+      Content-Type: application/json
+    rps: 10
+
+load:
+  duration: 60s
+
+metrics:
+  type: console   # "console", "prometheus", or "s3"
+
+variables:
+  - name: id
+    type: uuid
+
+  # Integer range: sequential or random integers between min and max (inclusive)
+  # - name: page
+  #   type: int_range
+  #   generator:
+  #     min: 1
+  #     max: 100
+  #     mode: rnd   # "seq" or "rnd"
+
+  # Integer set: sequential or random selection from a fixed list
+  # - name: status
+  #   type: int_set
+  #   generator:
+  #     values: [200, 404, 500]
+  #     mode: seq   # "seq" or "rnd"
+  
