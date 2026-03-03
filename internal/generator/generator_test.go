@@ -3,6 +3,7 @@ package generator
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewIntRangeGenerator(t *testing.T) {
@@ -700,10 +701,142 @@ func TestStringSetGenerator_Concurrent_Rnd(t *testing.T) {
 	}
 }
 
+func TestNewTimestampGenerator(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  TimestampFormat
+		wantErr bool
+	}{
+		{"unix format", UnixEpochFormat, false},
+		{"rfc3339 format", RFC3339Format, false},
+		{"invalid format", "invalid", true},
+		{"empty format", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gen, err := NewTimestampGenerator(tt.format)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTimestampGenerator() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && gen == nil {
+				t.Error("NewTimestampGenerator() returned nil generator without error")
+			}
+		})
+	}
+}
+
+func TestTimestampGenerator_Next_Unix(t *testing.T) {
+	before := time.Now().Unix()
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(int64)
+	after := time.Now().Unix()
+
+	if got < before || got > after {
+		t.Errorf("Next() = %d, want value between %d and %d", got, before, after)
+	}
+}
+
+func TestTimestampGenerator_Next_RFC3339(t *testing.T) {
+	before := time.Now().UTC()
+	gen, err := NewTimestampGenerator(RFC3339Format)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(string)
+	after := time.Now().UTC()
+
+	parsed, err := time.Parse(time.RFC3339, got)
+	if err != nil {
+		t.Fatalf("Next() returned invalid RFC3339 string: %q, error: %v", got, err)
+	}
+
+	// Allow 1 second of slack around the parse to account for rounding to seconds
+	if parsed.Before(before.Add(-time.Second)) || parsed.After(after.Add(time.Second)) {
+		t.Errorf("Next() = %q, parsed time %v is outside expected range [%v, %v]", got, parsed, before, after)
+	}
+}
+
+func TestTimestampGenerator_Next_RFC3339_IsUTC(t *testing.T) {
+	gen, err := NewTimestampGenerator(RFC3339Format)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(string)
+	// RFC3339 UTC timestamps end with "Z"
+	if len(got) == 0 || got[len(got)-1] != 'Z' {
+		t.Errorf("Next() = %q, expected UTC timestamp ending with 'Z'", got)
+	}
+}
+
+func TestTimestampGenerator_Next_Advances(t *testing.T) {
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	first := gen.Next().(int64)
+	time.Sleep(1100 * time.Millisecond)
+	second := gen.Next().(int64)
+
+	if second <= first {
+		t.Errorf("Expected second call (%d) to be greater than first (%d)", second, first)
+	}
+}
+
+func TestTimestampGenerator_GetGeneratorType(t *testing.T) {
+	gen, _ := NewTimestampGenerator(UnixEpochFormat)
+	if gen.GetGeneratorType() != TimestampType {
+		t.Errorf("GetGeneratorType() = %v, want %v", gen.GetGeneratorType(), TimestampType)
+	}
+}
+
+func TestTimestampGenerator_Concurrent(t *testing.T) {
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	const numGoroutines = 100
+	const callsPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	results := make(chan int64, numGoroutines*callsPerGoroutine)
+
+	before := time.Now().Unix()
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsPerGoroutine; j++ {
+				results <- gen.Next().(int64)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+	after := time.Now().Unix()
+
+	for val := range results {
+		if val < before || val > after {
+			t.Errorf("Got timestamp %d outside expected range [%d, %d]", val, before, after)
+		}
+	}
+}
+
 // Test that generators implement the Generator interface
 func TestGeneratorInterface(t *testing.T) {
 	var _ Generator = (*IntRangeGenerator)(nil)
 	var _ Generator = (*IntSetGenerator)(nil)
 	var _ Generator = (*UUIDGenerator)(nil)
 	var _ Generator = (*StringSetGenerator)(nil)
+	var _ Generator = (*TimestampGenerator)(nil)
 }

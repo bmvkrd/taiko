@@ -6,6 +6,7 @@ import (
 	"errors"
 	mathrand "math/rand/v2"
 	"sync/atomic"
+	"time"
 )
 
 type Generator interface {
@@ -20,6 +21,14 @@ const (
 	IntRangeType  GeneratorType = "int_range"
 	UUIDType      GeneratorType = "uuid"
 	StringSetType GeneratorType = "string_set"
+	TimestampType GeneratorType = "timestamp"
+)
+
+type TimestampFormat string
+
+const (
+	UnixEpochFormat TimestampFormat = "unix"
+	RFC3339Format   TimestampFormat = "rfc3339"
 )
 
 type Mode string
@@ -204,4 +213,36 @@ func (g *StringSetGenerator) Next() any {
 // GetGeneratorType returns StringSetType.
 func (g *StringSetGenerator) GetGeneratorType() GeneratorType {
 	return StringSetType
+}
+
+// TimestampGenerator generates the current timestamp on each call.
+// The format property controls the output type: "unix" returns int64 (seconds
+// since epoch), "rfc3339" returns a string formatted per RFC 3339.
+// Thread-safe for concurrent access from multiple workers.
+type TimestampGenerator struct {
+	format TimestampFormat
+}
+
+// NewTimestampGenerator creates a new TimestampGenerator with the given format.
+// format must be "unix" or "rfc3339".
+func NewTimestampGenerator(format TimestampFormat) (*TimestampGenerator, error) {
+	if format != UnixEpochFormat && format != RFC3339Format {
+		return nil, errors.New("format must be 'unix' or 'rfc3339'")
+	}
+	return &TimestampGenerator{format: format}, nil
+}
+
+// Next returns the current timestamp. For "unix" format it returns int64
+// (seconds since Unix epoch); for "rfc3339" format it returns a string.
+func (g *TimestampGenerator) Next() any {
+	now := time.Now()
+	if g.format == UnixEpochFormat {
+		return now.Unix()
+	}
+	return now.UTC().Format(time.RFC3339)
+}
+
+// GetGeneratorType returns TimestampType.
+func (g *TimestampGenerator) GetGeneratorType() GeneratorType {
+	return TimestampType
 }
