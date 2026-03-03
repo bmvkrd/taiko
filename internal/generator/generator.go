@@ -6,6 +6,7 @@ import (
 	"errors"
 	mathrand "math/rand/v2"
 	"sync/atomic"
+	"time"
 )
 
 type Generator interface {
@@ -16,9 +17,18 @@ type Generator interface {
 type GeneratorType string
 
 const (
-	IntSetType   GeneratorType = "int_set"
-	IntRangeType GeneratorType = "int_range"
-	UUIDType     GeneratorType = "uuid"
+	IntSetType    GeneratorType = "int_set"
+	IntRangeType  GeneratorType = "int_range"
+	UUIDType      GeneratorType = "uuid"
+	StringSetType GeneratorType = "string_set"
+	TimestampType GeneratorType = "timestamp"
+)
+
+type TimestampFormat string
+
+const (
+	UnixEpochFormat TimestampFormat = "unix"
+	RFC3339Format   TimestampFormat = "rfc3339"
 )
 
 type Mode string
@@ -157,4 +167,82 @@ func (g *UUIDGenerator) Next() any {
 // GetGeneratorType returns UUIDType.
 func (g *UUIDGenerator) GetGeneratorType() GeneratorType {
 	return UUIDType
+}
+
+// StringSetGenerator generates strings from a set of values.
+// In "seq" mode, values are generated sequentially and wrap around.
+// In "rnd" mode, values are randomly selected from the set.
+// Thread-safe for concurrent access from multiple workers.
+type StringSetGenerator struct {
+	values  []string
+	mode    Mode
+	current atomic.Int64
+}
+
+// NewStringSetGenerator creates a new StringSetGenerator that generates values from
+// the provided set. In "seq" mode, values cycle sequentially, wrapping back to
+// the beginning after the last value. In "rnd" mode, values are randomly selected.
+func NewStringSetGenerator(values []string, mode Mode) (*StringSetGenerator, error) {
+	if len(values) == 0 {
+		return nil, errors.New("values slice must not be empty")
+	}
+	if mode != SeqMode && mode != RndMode {
+		return nil, errors.New("mode must be 'seq' or 'rnd'")
+	}
+	// Make a copy to prevent external modification
+	valuesCopy := make([]string, len(values))
+	copy(valuesCopy, values)
+	return &StringSetGenerator{
+		values: valuesCopy,
+		mode:   mode,
+	}, nil
+}
+
+// Next returns the next string from the set.
+// In "seq" mode, values cycle through the set sequentially, then wrap back.
+// In "rnd" mode, a random value from the set is returned.
+func (g *StringSetGenerator) Next() any {
+	if g.mode == RndMode {
+		return g.values[mathrand.IntN(len(g.values))]
+	}
+	counter := g.current.Add(1) - 1 // get current value before increment
+	index := counter % int64(len(g.values))
+	return g.values[index]
+}
+
+// GetGeneratorType returns StringSetType.
+func (g *StringSetGenerator) GetGeneratorType() GeneratorType {
+	return StringSetType
+}
+
+// TimestampGenerator generates the current timestamp on each call.
+// The format property controls the output type: "unix" returns int64 (seconds
+// since epoch), "rfc3339" returns a string formatted per RFC 3339.
+// Thread-safe for concurrent access from multiple workers.
+type TimestampGenerator struct {
+	format TimestampFormat
+}
+
+// NewTimestampGenerator creates a new TimestampGenerator with the given format.
+// format must be "unix" or "rfc3339".
+func NewTimestampGenerator(format TimestampFormat) (*TimestampGenerator, error) {
+	if format != UnixEpochFormat && format != RFC3339Format {
+		return nil, errors.New("format must be 'unix' or 'rfc3339'")
+	}
+	return &TimestampGenerator{format: format}, nil
+}
+
+// Next returns the current timestamp. For "unix" format it returns int64
+// (seconds since Unix epoch); for "rfc3339" format it returns a string.
+func (g *TimestampGenerator) Next() any {
+	now := time.Now()
+	if g.format == UnixEpochFormat {
+		return now.Unix()
+	}
+	return now.UTC().Format(time.RFC3339)
+}
+
+// GetGeneratorType returns TimestampType.
+func (g *TimestampGenerator) GetGeneratorType() GeneratorType {
+	return TimestampType
 }

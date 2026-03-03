@@ -3,6 +3,7 @@ package generator
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestNewIntRangeGenerator(t *testing.T) {
@@ -500,9 +501,342 @@ func TestUUIDGenerator_Concurrent(t *testing.T) {
 	}
 }
 
+func TestNewStringSetGenerator(t *testing.T) {
+	tests := []struct {
+		name    string
+		values  []string
+		mode    Mode
+		wantErr bool
+	}{
+		{"valid values seq", []string{"a", "b", "c"}, SeqMode, false},
+		{"valid values rnd", []string{"a", "b", "c"}, RndMode, false},
+		{"single value", []string{"only"}, SeqMode, false},
+		{"values with spaces", []string{"hello world", "foo bar"}, SeqMode, false},
+		{"empty strings allowed", []string{"", "non-empty"}, SeqMode, false},
+		{"empty slice", []string{}, SeqMode, true},
+		{"nil slice", nil, SeqMode, true},
+		{"invalid mode", []string{"a", "b"}, "invalid", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gen, err := NewStringSetGenerator(tt.values, tt.mode)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewStringSetGenerator() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && gen == nil {
+				t.Error("NewStringSetGenerator() returned nil generator without error")
+			}
+		})
+	}
+}
+
+func TestStringSetGenerator_Next_Seq(t *testing.T) {
+	gen, err := NewStringSetGenerator([]string{"foo", "bar", "baz"}, SeqMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	expected := []string{"foo", "bar", "baz", "foo", "bar", "baz", "foo"}
+	for i, want := range expected {
+		got := gen.Next().(string)
+		if got != want {
+			t.Errorf("Next() call %d = %v, want %v", i, got, want)
+		}
+	}
+}
+
+func TestStringSetGenerator_Next_Rnd(t *testing.T) {
+	values := []string{"alpha", "beta", "gamma", "delta", "epsilon"}
+	gen, err := NewStringSetGenerator(values, RndMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	validValues := make(map[string]bool)
+	for _, v := range values {
+		validValues[v] = true
+	}
+
+	seenValues := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		got := gen.Next().(string)
+		if !validValues[got] {
+			t.Errorf("Next() call %d = %v, not in set", i, got)
+		}
+		seenValues[got] = true
+	}
+
+	if len(seenValues) < 3 {
+		t.Errorf("Random mode produced only %d distinct values in 100 calls, expected more variety", len(seenValues))
+	}
+}
+
+func TestStringSetGenerator_Next_SingleValue(t *testing.T) {
+	gen, err := NewStringSetGenerator([]string{"only"}, SeqMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	for i := 0; i < 5; i++ {
+		got := gen.Next().(string)
+		if got != "only" {
+			t.Errorf("Next() call %d = %v, want \"only\"", i, got)
+		}
+	}
+}
+
+func TestStringSetGenerator_ImmutableValues(t *testing.T) {
+	original := []string{"x", "y", "z"}
+	gen, err := NewStringSetGenerator(original, SeqMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	// Modify original slice
+	original[0] = "modified"
+
+	// Generator should still return original values
+	got := gen.Next().(string)
+	if got != "x" {
+		t.Errorf("Next() = %v, want \"x\" (generator should have copied values)", got)
+	}
+}
+
+func TestStringSetGenerator_GetGeneratorType(t *testing.T) {
+	gen, _ := NewStringSetGenerator([]string{"a", "b"}, SeqMode)
+	if gen.GetGeneratorType() != StringSetType {
+		t.Errorf("GetGeneratorType() = %v, want %v", gen.GetGeneratorType(), StringSetType)
+	}
+}
+
+func TestStringSetGenerator_Concurrent_Seq(t *testing.T) {
+	values := []string{"one", "two", "three", "four", "five"}
+	gen, err := NewStringSetGenerator(values, SeqMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	const numGoroutines = 100
+	const callsPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	results := make(chan string, numGoroutines*callsPerGoroutine)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsPerGoroutine; j++ {
+				val := gen.Next().(string)
+				results <- val
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	validValues := make(map[string]bool)
+	for _, v := range values {
+		validValues[v] = true
+	}
+
+	counts := make(map[string]int)
+	for val := range results {
+		if !validValues[val] {
+			t.Errorf("Got invalid value: %s", val)
+		}
+		counts[val]++
+	}
+
+	// Each value should appear approximately equal number of times
+	totalCalls := numGoroutines * callsPerGoroutine
+	expectedPerValue := totalCalls / len(values)
+	for val, count := range counts {
+		// Allow 20% deviation
+		if count < expectedPerValue*8/10 || count > expectedPerValue*12/10 {
+			t.Errorf("Value %q appeared %d times, expected ~%d", val, count, expectedPerValue)
+		}
+	}
+}
+
+func TestStringSetGenerator_Concurrent_Rnd(t *testing.T) {
+	values := []string{"one", "two", "three", "four", "five"}
+	gen, err := NewStringSetGenerator(values, RndMode)
+	if err != nil {
+		t.Fatalf("NewStringSetGenerator() error = %v", err)
+	}
+
+	const numGoroutines = 100
+	const callsPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	results := make(chan string, numGoroutines*callsPerGoroutine)
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsPerGoroutine; j++ {
+				val := gen.Next().(string)
+				results <- val
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+
+	validValues := make(map[string]bool)
+	for _, v := range values {
+		validValues[v] = true
+	}
+
+	for val := range results {
+		if !validValues[val] {
+			t.Errorf("Got invalid value: %s", val)
+		}
+	}
+}
+
+func TestNewTimestampGenerator(t *testing.T) {
+	tests := []struct {
+		name    string
+		format  TimestampFormat
+		wantErr bool
+	}{
+		{"unix format", UnixEpochFormat, false},
+		{"rfc3339 format", RFC3339Format, false},
+		{"invalid format", "invalid", true},
+		{"empty format", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gen, err := NewTimestampGenerator(tt.format)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("NewTimestampGenerator() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && gen == nil {
+				t.Error("NewTimestampGenerator() returned nil generator without error")
+			}
+		})
+	}
+}
+
+func TestTimestampGenerator_Next_Unix(t *testing.T) {
+	before := time.Now().Unix()
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(int64)
+	after := time.Now().Unix()
+
+	if got < before || got > after {
+		t.Errorf("Next() = %d, want value between %d and %d", got, before, after)
+	}
+}
+
+func TestTimestampGenerator_Next_RFC3339(t *testing.T) {
+	before := time.Now().UTC()
+	gen, err := NewTimestampGenerator(RFC3339Format)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(string)
+	after := time.Now().UTC()
+
+	parsed, err := time.Parse(time.RFC3339, got)
+	if err != nil {
+		t.Fatalf("Next() returned invalid RFC3339 string: %q, error: %v", got, err)
+	}
+
+	// Allow 1 second of slack around the parse to account for rounding to seconds
+	if parsed.Before(before.Add(-time.Second)) || parsed.After(after.Add(time.Second)) {
+		t.Errorf("Next() = %q, parsed time %v is outside expected range [%v, %v]", got, parsed, before, after)
+	}
+}
+
+func TestTimestampGenerator_Next_RFC3339_IsUTC(t *testing.T) {
+	gen, err := NewTimestampGenerator(RFC3339Format)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	got := gen.Next().(string)
+	// RFC3339 UTC timestamps end with "Z"
+	if len(got) == 0 || got[len(got)-1] != 'Z' {
+		t.Errorf("Next() = %q, expected UTC timestamp ending with 'Z'", got)
+	}
+}
+
+func TestTimestampGenerator_Next_Advances(t *testing.T) {
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	first := gen.Next().(int64)
+	time.Sleep(1100 * time.Millisecond)
+	second := gen.Next().(int64)
+
+	if second <= first {
+		t.Errorf("Expected second call (%d) to be greater than first (%d)", second, first)
+	}
+}
+
+func TestTimestampGenerator_GetGeneratorType(t *testing.T) {
+	gen, _ := NewTimestampGenerator(UnixEpochFormat)
+	if gen.GetGeneratorType() != TimestampType {
+		t.Errorf("GetGeneratorType() = %v, want %v", gen.GetGeneratorType(), TimestampType)
+	}
+}
+
+func TestTimestampGenerator_Concurrent(t *testing.T) {
+	gen, err := NewTimestampGenerator(UnixEpochFormat)
+	if err != nil {
+		t.Fatalf("NewTimestampGenerator() error = %v", err)
+	}
+
+	const numGoroutines = 100
+	const callsPerGoroutine = 1000
+
+	var wg sync.WaitGroup
+	results := make(chan int64, numGoroutines*callsPerGoroutine)
+
+	before := time.Now().Unix()
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < callsPerGoroutine; j++ {
+				results <- gen.Next().(int64)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(results)
+	after := time.Now().Unix()
+
+	for val := range results {
+		if val < before || val > after {
+			t.Errorf("Got timestamp %d outside expected range [%d, %d]", val, before, after)
+		}
+	}
+}
+
 // Test that generators implement the Generator interface
 func TestGeneratorInterface(t *testing.T) {
 	var _ Generator = (*IntRangeGenerator)(nil)
 	var _ Generator = (*IntSetGenerator)(nil)
 	var _ Generator = (*UUIDGenerator)(nil)
+	var _ Generator = (*StringSetGenerator)(nil)
+	var _ Generator = (*TimestampGenerator)(nil)
 }
