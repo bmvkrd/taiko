@@ -1,4 +1,4 @@
-# taiko-runner
+# taiko
 
 A high-performance load testing engine designed for standalone (CLI) or Kubernetes cluster-internal use. 
 
