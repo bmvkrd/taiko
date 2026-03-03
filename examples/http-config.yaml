@@ -7,10 +7,10 @@ targets:
     body: '{}'
     headers:
       Content-Type: application/json
-    rps: 10
+    rps: 500
 
 load:
-  duration: 60s
+  duration: 1m
 
 metrics:
   type: console   # "console", "prometheus", or "s3"
