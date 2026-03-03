@@ -226,6 +226,8 @@ func (e *HTTPEngine) Run(ctx context.Context) (*engine.Stats, error) {
 		e.dynamicScaler(testCtx)
 	}()
 
+	fmt.Println("")	
+
 	// Start with initial workers: match target RPS for low values, cap at 10 otherwise
 	initialWorkers := min(e.totalRPS, 10)
 	for i := 0; i < initialWorkers; i++ {
@@ -262,8 +264,6 @@ func (e *HTTPEngine) Run(ctx context.Context) (*engine.Stats, error) {
 func (e *HTTPEngine) dynamicScaler(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second) // Check every 2 seconds
 	defer ticker.Stop()
-
-	fmt.Println("Dynamic scaling enabled")
 
 	// Calibration phase
 	time.Sleep(3 * time.Second) // Let initial workers stabilize
@@ -318,15 +318,6 @@ func (e *HTTPEngine) dynamicScaler(ctx context.Context) {
 			} else if performanceRatio >= scaleUpThreshold {
 				// Target reached - clear capacity flag
 				capacityReached = false
-			}
-
-			// Log status
-			if capacityReached {
-				fmt.Printf("Workers: %d | Target: %.0f RPS | Actual: %.0f RPS | Ratio: %.2f | CAPACITY LIMIT REACHED\n",
-					currentWorkers, targetRPS, actualRPS, performanceRatio)
-			} else {
-				fmt.Printf("Workers: %d | Target: %.0f RPS | Actual: %.0f RPS | Ratio: %.2f\n",
-					currentWorkers, targetRPS, actualRPS, performanceRatio)
 			}
 
 			// Reset tracking for this cycle
@@ -705,6 +696,8 @@ func (e *HTTPEngine) collectResults() {
 				AvgLatency:    avgLatency,
 				ActiveWorkers: int(atomic.LoadInt32(&e.activeWorkers)),
 				ActualRPS:     actualRPS,
+				ElapsedTime:   now.Sub(testStart),
+				TotalDuration: e.duration,
 			}
 
 			// Sample worker count

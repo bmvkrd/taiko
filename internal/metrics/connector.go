@@ -27,6 +27,8 @@ type IntervalStats struct {
 	AvgLatency    time.Duration
 	ActiveWorkers int
 	ActualRPS     float64
+	ElapsedTime   time.Duration
+	TotalDuration time.Duration
 }
 
 // Summary contains final test results
