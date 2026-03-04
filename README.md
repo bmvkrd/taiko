@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://github.com/yourname/taiko">
+  <a href="https://github.com/bmvkrd/taiko">
     <img src="assets/logo.png" width="250" />
   </a>
 </p>
