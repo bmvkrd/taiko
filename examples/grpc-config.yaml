@@ -1,12 +1,16 @@
 engine: grpc
 targets:
-  - endpoint: my-service.default.svc.cluster.local:50051
-    service: mypackage.MyService
-    method: MyMethod
+  - endpoint: localhost:9090
+    service: taiko.TaikoService
+    method: Taiko
     payload: '{"user_id": "{{user_id}}"}'
     metadata:
       x-request-id: "{{uuid}}"
-    rps: 100
+    rps: 10
     timeout: 5s
 load:
   duration: 60s
+variables:
+  - name: user_id
+    type: uuid
+
