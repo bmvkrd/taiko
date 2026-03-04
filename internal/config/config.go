@@ -40,14 +40,15 @@ type HTTPTargetConfig struct {
 }
 
 type GRPCTargetConfig struct {
-	Endpoint string            `yaml:"endpoint"`
-	Service  string            `yaml:"service"`
-	Method   string            `yaml:"method"`
-	Timeout  string            `yaml:"timeout"`
-	Metadata map[string]string `yaml:"metadata"`
-	Payload  string            `yaml:"payload"`
-	RPS      int               `yaml:"rps"`
-	Burst    int               `yaml:"burst"`
+	Endpoint   string            `yaml:"endpoint"`
+	Service    string            `yaml:"service"`
+	Method     string            `yaml:"method"`
+	Timeout    string            `yaml:"timeout"`
+	Metadata   map[string]string `yaml:"metadata"`
+	Payload    string            `yaml:"payload"`
+	RPS        int               `yaml:"rps"`
+	Burst      int               `yaml:"burst"`
+	ProtoFiles []string          `yaml:"proto_files"`
 }
 
 type KafkaTargetConfig struct {
@@ -128,6 +129,11 @@ func (g *GRPCTargetConfig) Validate() error {
 	}
 	if g.RPS <= 0 {
 		return fmt.Errorf("grpc target requires 'rps' field > 0")
+	}
+	for _, f := range g.ProtoFiles {
+		if _, err := os.Stat(f); err != nil {
+			return fmt.Errorf("proto_files: cannot access %q: %w (check path and indentation in config)", f, err)
+		}
 	}
 	return nil
 }
@@ -278,6 +284,13 @@ func parseGRPCTarget(raw map[string]interface{}) (Target, error) {
 		for k, v := range metadata {
 			if vs, ok := v.(string); ok {
 				cfg.Metadata[k] = vs
+			}
+		}
+	}
+	if files, ok := raw["proto_files"].([]interface{}); ok {
+		for _, f := range files {
+			if fs, ok := f.(string); ok {
+				cfg.ProtoFiles = append(cfg.ProtoFiles, fs)
 			}
 		}
 	}

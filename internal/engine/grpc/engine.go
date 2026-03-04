@@ -3,22 +3,26 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
+	protocompile "github.com/bufbuild/protocompile"
 	"github.com/bmvkrd/taiko/internal/config"
 	"github.com/bmvkrd/taiko/internal/engine"
 	"github.com/bmvkrd/taiko/internal/engine/pool"
 	"github.com/bmvkrd/taiko/internal/metrics"
-	"github.com/jhump/protoreflect/desc"
-	"github.com/jhump/protoreflect/dynamic"
-	"github.com/jhump/protoreflect/grpcreflect"
+	grpcreflectv2 "github.com/jhump/protoreflect/v2/grpcreflect"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	grpcmd "google.golang.org/grpc/metadata"
-	reflectpb "google.golang.org/grpc/reflection/grpc_reflection_v1alpha"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 func init() {
@@ -32,8 +36,8 @@ type grpcTarget struct {
 	metadata   map[string]string
 	timeout    time.Duration
 	conn       *grpc.ClientConn
-	inputType  *desc.MessageDescriptor
-	outputType *desc.MessageDescriptor
+	inputType  protoreflect.MessageDescriptor
+	outputType protoreflect.MessageDescriptor
 }
 
 // GRPCEngine implements the gRPC load testing protocol.
@@ -44,8 +48,8 @@ type GRPCEngine struct {
 }
 
 // NewGRPCEngine creates a new gRPC load generation engine.
-// It connects to each target and uses server reflection to discover
-// the request/response message types for the configured service method.
+// It connects to each target and resolves request/response message types either
+// from user-provided .proto files or via server reflection.
 func NewGRPCEngine(cfg *config.Config) (engine.Engine, error) {
 	if len(cfg.Targets) == 0 {
 		return nil, fmt.Errorf("grpc engine requires at least one target")
@@ -81,7 +85,15 @@ func NewGRPCEngine(cfg *config.Config) (engine.Engine, error) {
 			return nil, fmt.Errorf("target[%d]: failed to create connection to %s: %w", i, grpcCfg.Endpoint, connErr)
 		}
 
-		inputType, outputType, reflErr := resolveMethodTypes(conn, grpcCfg.Service, grpcCfg.Method)
+		var inputType, outputType protoreflect.MessageDescriptor
+		var reflErr error
+		if len(grpcCfg.ProtoFiles) > 0 {
+			fmt.Printf("target[%d]: resolving method types from proto files: %v\n", i, grpcCfg.ProtoFiles)
+			inputType, outputType, reflErr = resolveMethodTypesFromProto(grpcCfg.Service, grpcCfg.Method, grpcCfg.ProtoFiles)
+		} else {
+			fmt.Printf("target[%d]: resolving method types via server reflection\n", i)
+			inputType, outputType, reflErr = resolveMethodTypes(conn, grpcCfg.Service, grpcCfg.Method)
+		}
 		if reflErr != nil {
 			conn.Close()
 			closeConnections(grpcTargets)
@@ -181,16 +193,16 @@ func (e *GRPCEngine) doWork(ctx context.Context, targetIndex int) *engine.Result
 	start := time.Now()
 
 	// Build input message from the (substituted) JSON payload.
-	inputMsg := dynamic.NewMessage(target.inputType)
+	inputMsg := dynamicpb.NewMessage(target.inputType)
 	if payloadJSON != "" {
-		if err := inputMsg.UnmarshalJSON([]byte(payloadJSON)); err != nil {
+		if err := protojson.Unmarshal([]byte(payloadJSON), inputMsg); err != nil {
 			result.Error = fmt.Errorf("invalid payload JSON: %w", err)
 			result.Duration = time.Since(start)
 			return result
 		}
 	}
 
-	outputMsg := dynamic.NewMessage(target.outputType)
+	outputMsg := dynamicpb.NewMessage(target.outputType)
 
 	// Derive a per-request context from the worker context so that
 	// in-flight requests are bounded by both the request timeout and
@@ -222,26 +234,120 @@ func (e *GRPCEngine) doWork(ctx context.Context, targetIndex int) *engine.Result
 	return result
 }
 
+// resolveMethodTypesFromProto parses the given .proto files and returns the
+// input and output message descriptors for the given service/method pair.
+// Import paths are derived automatically from the directories of the proto files.
+func resolveMethodTypesFromProto(service, method string, protoFiles []string) (protoreflect.MessageDescriptor, protoreflect.MessageDescriptor, error) {
+	// Derive import paths from the directories of the proto files.
+	seen := map[string]bool{}
+	var importPaths []string
+	for _, f := range protoFiles {
+		dir := filepath.Dir(f)
+		if !seen[dir] {
+			seen[dir] = true
+			importPaths = append(importPaths, dir)
+		}
+	}
+
+	compiler := protocompile.Compiler{
+		Resolver: protocompile.WithStandardImports(protocompile.ResolverFunc(func(path string) (protocompile.SearchResult, error) {
+			// Open absolute paths directly, then fall back to searching import dirs.
+			if f, err := os.Open(path); err == nil {
+				return protocompile.SearchResult{Source: f}, nil
+			}
+			for _, dir := range importPaths {
+				if f, err := os.Open(filepath.Join(dir, path)); err == nil {
+					return protocompile.SearchResult{Source: f}, nil
+				}
+			}
+			return protocompile.SearchResult{}, protoregistry.NotFound
+		})),
+	}
+
+	fds, err := compiler.Compile(context.Background(), protoFiles...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to compile proto files: %w", err)
+	}
+
+	// DFS across file descriptors and their transitive imports to find the service.
+	var found protoreflect.MethodDescriptor
+	var serviceFound bool
+	visited := map[string]bool{}
+	var search func(fd protoreflect.FileDescriptor)
+	search = func(fd protoreflect.FileDescriptor) {
+		if visited[fd.Path()] {
+			return
+		}
+		visited[fd.Path()] = true
+		svcs := fd.Services()
+		for i := 0; i < svcs.Len(); i++ {
+			svc := svcs.Get(i)
+			if string(svc.FullName()) == service {
+				serviceFound = true
+				found = svc.Methods().ByName(protoreflect.Name(method))
+				return
+			}
+		}
+		if serviceFound {
+			return
+		}
+		imports := fd.Imports()
+		for i := 0; i < imports.Len(); i++ {
+			search(imports.Get(i))
+			if serviceFound {
+				return
+			}
+		}
+	}
+	for _, fd := range fds {
+		search(fd)
+		if serviceFound {
+			break
+		}
+	}
+
+	if !serviceFound {
+		return nil, nil, fmt.Errorf("service %q not found in provided proto files", service)
+	}
+	if found == nil {
+		return nil, nil, fmt.Errorf("method %q not found in service %q", method, service)
+	}
+	return found.Input(), found.Output(), nil
+}
+
 // resolveMethodTypes uses gRPC server reflection to get the input and output
 // message descriptors for the given service/method pair.
-func resolveMethodTypes(conn *grpc.ClientConn, service, method string) (*desc.MessageDescriptor, *desc.MessageDescriptor, error) {
+func resolveMethodTypes(conn *grpc.ClientConn, service, method string) (protoreflect.MessageDescriptor, protoreflect.MessageDescriptor, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	rc := grpcreflect.NewClient(ctx, reflectpb.NewServerReflectionClient(conn))
+	rc := grpcreflectv2.NewClientAuto(ctx, conn)
 	defer rc.Reset()
 
-	svcDesc, err := rc.ResolveService(service)
+	fd, err := rc.FileContainingSymbol(protoreflect.FullName(service))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to resolve service %q via reflection: %w", service, err)
 	}
 
-	mthDesc := svcDesc.FindMethodByName(method)
+	var svcDesc protoreflect.ServiceDescriptor
+	svcs := fd.Services()
+	for i := 0; i < svcs.Len(); i++ {
+		svc := svcs.Get(i)
+		if string(svc.FullName()) == service {
+			svcDesc = svc
+			break
+		}
+	}
+	if svcDesc == nil {
+		return nil, nil, fmt.Errorf("service %q not found in reflection response", service)
+	}
+
+	mthDesc := svcDesc.Methods().ByName(protoreflect.Name(method))
 	if mthDesc == nil {
 		return nil, nil, fmt.Errorf("method %q not found in service %q", method, service)
 	}
 
-	return mthDesc.GetInputType(), mthDesc.GetOutputType(), nil
+	return mthDesc.Input(), mthDesc.Output(), nil
 }
 
 // closeConnections closes all gRPC connections in the given slice.
