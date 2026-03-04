@@ -112,6 +112,7 @@ func NewKafkaEngine(cfg *config.Config) (engine.Engine, error) {
 		kgo.SeedBrokers(allBrokers...),
 		kgo.RequiredAcks(kgo.LeaderAck()),
 		kgo.DisableIdempotentWrite(),
+		kgo.ProducerBatchCompression(kgo.NoCompression()),
 	)
 	if err != nil {
 		metricsConnector.Close()

@@ -1,9 +1,16 @@
 engine: kafka
 targets:
-  - brokers: ["kafka.default.svc:9092"]
-    topic: load-test-events
+  - brokers: ["localhost:9092"]
+    topic: taiko
     key: "{{user_id}}"
-    value: '{"event": "click", "user": "{{user_id}}"}'
-    rps: 500
+    value: '{"event": "click", "user": "{{user_id}}", "timestamp": "{{timestamp}}"}'
+    rps: 5
 load:
-  duration: 60s
+  duration: 10s
+variables:
+  - name: user_id
+    type: uuid
+  - name: timestamp
+    type: timestamp
+    generator:
+      format: rfc3339
