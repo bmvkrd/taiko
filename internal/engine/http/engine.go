@@ -5,14 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/bmvkrd/taiko/internal/config"
 	"github.com/bmvkrd/taiko/internal/engine"
 	"github.com/bmvkrd/taiko/internal/engine/pool"
-	"github.com/bmvkrd/taiko/internal/generator"
 	"github.com/bmvkrd/taiko/internal/metrics"
 	"golang.org/x/time/rate"
 )
@@ -31,11 +29,10 @@ type httpTarget struct {
 
 // HTTPEngine implements the HTTP load testing protocol.
 type HTTPEngine struct {
-	pool       *pool.Pool
-	targets    []*httpTarget
-	generators map[string]generator.Generator
-	varPattern *regexp.Regexp
-	client     *http.Client
+	pool        *pool.Pool
+	targets     []*httpTarget
+	substitutor *engine.Substitutor
+	client      *http.Client
 }
 
 // NewHTTPEngine creates a new HTTP load generation engine
@@ -112,20 +109,15 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 		return nil, fmt.Errorf("metrics connector init error: %w", err)
 	}
 
-	// Initialize variable generators
-	generators := make(map[string]generator.Generator)
-	for _, v := range cfg.Variables {
-		gen, err := createGenerator(v)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create generator for variable '%s': %w", v.Name, err)
-		}
-		generators[v.Name] = gen
+	// Initialize variable substitutor
+	substitutor, err := engine.NewSubstitutor(cfg.Variables)
+	if err != nil {
+		return nil, err
 	}
 
 	eng := &HTTPEngine{
-		targets:    httpTargets,
-		generators: generators,
-		varPattern: regexp.MustCompile(`\{\{(\w+)\}\}`),
+		targets:     httpTargets,
+		substitutor: substitutor,
 		client: &http.Client{
 			Timeout: maxTimeout,
 			Transport: &http.Transport{
@@ -178,12 +170,10 @@ func (e *HTTPEngine) Close() error {
 func (e *HTTPEngine) doWork(_ context.Context, targetIndex int) *engine.Result {
 	target := e.targets[targetIndex]
 
-	// Generate values once for this request
-	values := e.generateValues()
-
-	// Substitute variables in URL and body using the same values
-	url := e.substituteVariables(target.url, values)
-	body := e.substituteVariables(target.body, values)
+	// Generate values once for this request and apply to all templates
+	values := e.substitutor.NewValues()
+	url := e.substitutor.Apply(target.url, values)
+	body := e.substitutor.Apply(target.body, values)
 
 	result := &engine.Result{
 		Timestamp: time.Now(),
@@ -228,76 +218,3 @@ func (e *HTTPEngine) doWork(_ context.Context, targetIndex int) *engine.Result {
 	return result
 }
 
-// createGenerator creates a generator from a variable configuration
-func createGenerator(v config.Variable) (generator.Generator, error) {
-	switch v.Type {
-	case string(generator.IntRangeType):
-		mode := generator.Mode(v.Generator["mode"].(string))
-		min := toInt(v.Generator["min"])
-		max := toInt(v.Generator["max"])
-		return generator.NewIntRangeGenerator(min, max, mode)
-	case string(generator.IntSetType):
-		mode := generator.Mode(v.Generator["mode"].(string))
-		rawValues := v.Generator["values"]
-		values := toIntSlice(rawValues)
-		return generator.NewIntSetGenerator(values, mode)
-	case string(generator.UUIDType):
-		return generator.NewUUIDGenerator(), nil
-	default:
-		return nil, fmt.Errorf("unknown generator type: %s", v.Type)
-	}
-}
-
-// toInt converts various numeric types to int
-func toInt(v any) int {
-	switch val := v.(type) {
-	case int:
-		return val
-	case int64:
-		return int(val)
-	case float64:
-		return int(val)
-	default:
-		return 0
-	}
-}
-
-// toIntSlice converts various slice types to []int
-func toIntSlice(v any) []int {
-	switch val := v.(type) {
-	case []int:
-		return val
-	case []any:
-		result := make([]int, len(val))
-		for i, item := range val {
-			result[i] = toInt(item)
-		}
-		return result
-	default:
-		return nil
-	}
-}
-
-// generateValues generates a value for each variable generator
-func (e *HTTPEngine) generateValues() map[string]string {
-	values := make(map[string]string, len(e.generators))
-	for name, gen := range e.generators {
-		values[name] = fmt.Sprintf("%v", gen.Next())
-	}
-	return values
-}
-
-// substituteVariables replaces {{var}} placeholders with pre-generated values
-func (e *HTTPEngine) substituteVariables(s string, values map[string]string) string {
-	if len(values) == 0 {
-		return s
-	}
-	return e.varPattern.ReplaceAllStringFunc(s, func(match string) string {
-		// Extract variable name from {{name}}
-		varName := match[2 : len(match)-2]
-		if val, ok := values[varName]; ok {
-			return val
-		}
-		return match // Keep original if no value found
-	})
-}
