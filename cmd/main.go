@@ -14,6 +14,7 @@ import (
 	"github.com/bmvkrd/taiko/internal/config"
 	"github.com/bmvkrd/taiko/internal/engine"
 	_ "github.com/bmvkrd/taiko/internal/engine/http"
+	_ "github.com/bmvkrd/taiko/internal/engine/kafka"
 )
 
 func main() {
