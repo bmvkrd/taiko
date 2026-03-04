@@ -1,5 +1,4 @@
 engine: http
-
 targets:
   - url: http://localhost:8081/api/endpoint?id={{id}}
     method: POST
@@ -8,13 +7,10 @@ targets:
     headers:
       Content-Type: application/json
     rps: 500
-
 load:
   duration: 1m
-
 metrics:
   type: console   # "console", "prometheus", or "s3"
-
 variables:
   - name: id
     type: uuid

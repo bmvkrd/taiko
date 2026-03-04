@@ -1,0 +1,12 @@
+engine: grpc
+targets:
+  - endpoint: my-service.default.svc.cluster.local:50051
+    service: mypackage.MyService
+    method: MyMethod
+    payload: '{"user_id": "{{user_id}}"}'
+    metadata:
+      x-request-id: "{{uuid}}"
+    rps: 100
+    timeout: 5s
+load:
+  duration: 60s
