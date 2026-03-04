@@ -1,4 +1,11 @@
-# taiko
+<p align="center">
+  <a href="https://github.com/yourname/taiko">
+    <img src="assets/logo.png" width="250" />
+  </a>
+</p>
+
+<h1 align="center">Taiko</h1>
+
 
 A high-performance load testing engine designed for standalone (CLI) or Kubernetes cluster-internal use.
 
