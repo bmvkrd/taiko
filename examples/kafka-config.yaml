@@ -1,0 +1,9 @@
+engine: kafka
+targets:
+  - brokers: ["kafka.default.svc:9092"]
+    topic: load-test-events
+    key: "{{user_id}}"
+    value: '{"event": "click", "user": "{{user_id}}"}'
+    rps: 500
+load:
+  duration: 60s
