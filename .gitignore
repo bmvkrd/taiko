@@ -33,6 +33,7 @@ go.work.sum
 bin/
 
 # AI
+.claude/
 CLAUDE.md
 LOCAL*.md
 
