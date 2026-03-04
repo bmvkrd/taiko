@@ -37,3 +37,5 @@ bin/
 CLAUDE.md
 LOCAL*.md
 
+# Examples
+examples/*.proto

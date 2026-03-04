@@ -5,7 +5,7 @@ targets:
     method: Taiko
     proto_files:
       - examples/taiko.proto
-    payload: '{"user_id": "{{user_id}}"}'
+    payload: '{"message": "{{user_id}}"}'
     metadata:
       x-request-id: "{{uuid}}"
     rps: 10
