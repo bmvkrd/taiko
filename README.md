@@ -53,7 +53,7 @@ targets:
 load:
   duration: 1m
 metrics:
-  type: console   # "console", "prometheus", or "s3"
+  type: console
 variables:
   - name: id
     type: uuid
