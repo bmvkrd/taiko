@@ -12,8 +12,14 @@ import (
 
 // collectResults aggregates results and streams to connectors.
 func (p *Pool) collectResults() {
-	intervalTicker := time.NewTicker(5 * time.Second)
+	intervalTicker := time.NewTicker(1 * time.Second)
 	defer intervalTicker.Stop()
+
+	if p.metricsConnector != nil { 	// Initial ticker display
+		if err := p.metricsConnector.OnInterval(context.Background(), &metrics.IntervalStats{}); err != nil {
+			fmt.Fprintf(p.logger, "Connector (interval) error: %v\n", err)
+		}
+	}
 
 	workerSamples := make([]int, 0)
 
