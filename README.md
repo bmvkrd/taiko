@@ -1,10 +1,10 @@
 <p align="center">
   <a href="https://github.com/bmvkrd/taiko">
-    <img src="assets/taiko.png" width="250" />
+    <img src="assets/taiko.jpg" width="250" />
   </a>
 </p>
 
-<h1 align="center">Taiko</h1>
+<h1 align="left">taiko</h1>
 
 A high-performance load testing engine designed for standalone (CLI) or Kubernetes cluster-internal use.
 
