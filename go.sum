@@ -1,5 +1,5 @@
-github.com/bmvkrd/livelog v0.0.0-20260305140312-048e28fb5153 h1:tn6ZTlyJ5yD09ZrbnM9ucCASeK9F9KuVUdUUOKLzfuQ=
-github.com/bmvkrd/livelog v0.0.0-20260305140312-048e28fb5153/go.mod h1:JQvC3xizVeM8fwiZ97GlSbjJpEMQmlP9TEnRbZBtWvU=
+github.com/bmvkrd/livelog v1.0.1 h1:pcqr54lfGXYEMybZ5WzO6FkrI/wS46Tyu5waBYB50jo=
+github.com/bmvkrd/livelog v1.0.1/go.mod h1:JQvC3xizVeM8fwiZ97GlSbjJpEMQmlP9TEnRbZBtWvU=
 github.com/bufbuild/protocompile v0.14.1 h1:iA73zAf/fyljNjQKwYzUHD6AD4R8KMasmwa/FBatYVw=
 github.com/bufbuild/protocompile v0.14.1/go.mod h1:ppVdAIhbr2H8asPk6k4pY7t9zB1OU5DoEw9xY/FUi1c=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
@@ -59,8 +59,6 @@ golang.org/x/net v0.48.0 h1:zyQRTTrjc33Lhh0fBgT/H3oZq9WuvRR5gPC70xpDiQU=
 golang.org/x/net v0.48.0/go.mod h1:+ndRgGjkh8FGtu1w1FGbEC31if4VrNVMuKTgcAAnQRY=
 golang.org/x/sync v0.19.0 h1:vV+1eWNmZ5geRlYjzm2adRgW2/mcpevXNg50YZtPCE4=
 golang.org/x/sync v0.19.0/go.mod h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI=
-golang.org/x/sys v0.39.0 h1:CvCKL8MeisomCi6qNZ+wbb0DN9E5AATixKsvNtMoMFk=
-golang.org/x/sys v0.39.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
 golang.org/x/sys v0.41.0 h1:Ivj+2Cp/ylzLiEU89QhWblYnOE9zerudt9Ftecq2C6k=
 golang.org/x/sys v0.41.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
 golang.org/x/term v0.40.0 h1:36e4zGLqU4yhjlmxEaagx2KuYbJq3EwY8K943ZsHcvg=

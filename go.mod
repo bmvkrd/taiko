@@ -3,6 +3,7 @@ module github.com/bmvkrd/taiko
 go 1.25.3
 
 require (
+	github.com/bmvkrd/livelog v1.0.1
 	github.com/bufbuild/protocompile v0.14.1
 	github.com/jhump/protoreflect/v2 v2.0.0-beta.1
 	github.com/twmb/franz-go v1.20.7
@@ -13,7 +14,6 @@ require (
 )
 
 require (
-	github.com/bmvkrd/livelog v0.0.0-20260305140312-048e28fb5153 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
