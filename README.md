@@ -1,4 +1,4 @@
-<h1 align="left">taiko</h1>
+# taiko
 
 A high-performance load testing engine designed for standalone (CLI) or Kubernetes cluster-internal use.
 
