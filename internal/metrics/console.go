@@ -5,19 +5,21 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bmvkrd/livelog"
 )
 
 const progressBarWidth = 40
 
 type ConsoleConnector struct {
+	display       *livelog.Display
 	totalRequests int64
 	totalSuccess  int64
 	totalFailure  int64
-	intervals     int
 }
 
 func NewConsoleConnector() Connector {
-	return &ConsoleConnector{}
+	return &ConsoleConnector{display: globalDisplay}
 }
 
 func (c *ConsoleConnector) Init(config map[string]string) error {
@@ -38,23 +40,56 @@ func (c *ConsoleConnector) OnInterval(ctx context.Context, stats *IntervalStats)
 
 	progressLine := buildProgressBar(stats.ElapsedTime, stats.TotalDuration)
 
-	if c.intervals > 0 {
-		// Move cursor up 2 lines to overwrite previous output
-		fmt.Print("\033[2A")
+	if c.display != nil {
+		c.display.SetLive([]string{statsLine, progressLine})
+	} else {
+		fmt.Println(statsLine)
+		fmt.Println(progressLine)
 	}
-
-	fmt.Printf("\033[2K%s\n\033[2K%s\n", statsLine, progressLine)
-
-	c.intervals++
 	return nil
 }
 
 func (c *ConsoleConnector) OnComplete(ctx context.Context, summary *Summary) error {
-	if c.intervals > 0 {
-		// Clear the two live lines before printing the summary
-		fmt.Print("\033[2A\033[2K\033[1B\033[2K\033[1A")
+	if c.display != nil {
+		c.display.ClearLive()
+		c.logSummary(summary)
+	} else {
+		c.printSummary(summary)
 	}
+	return nil
+}
 
+func (c *ConsoleConnector) logSummary(summary *Summary) {
+	c.display.Log("\n=== Load Test Summary ===")
+	c.display.Logf("Total Requests:  %d", summary.TotalRequests)
+	c.display.Logf("Success:         %d", summary.SuccessRequests)
+	c.display.Logf("Failed:          %d", summary.FailedRequests)
+	c.display.Logf("Duration:        %v", summary.Duration)
+	c.display.Logf("Actual RPS:      %.2f", summary.ActualRPS)
+	c.display.Logf("Peak Workers:    %d", summary.PeakWorkers)
+	c.display.Logf("Avg Workers:     %.2f", summary.AvgWorkers)
+	c.display.Log("\nLatency:")
+	c.display.Logf("  Min: %v", summary.MinLatency)
+	c.display.Logf("  Max: %v", summary.MaxLatency)
+	c.display.Logf("  Avg: %v", summary.AvgLatency)
+	c.display.Logf("  P50: %v", summary.P50Latency)
+	c.display.Logf("  P95: %v", summary.P95Latency)
+	c.display.Logf("  P99: %v", summary.P99Latency)
+	if len(summary.StatusCodes) > 0 {
+		c.display.Log("\nStatus Codes:")
+		for code, count := range summary.StatusCodes {
+			c.display.Logf("  %d: %d", code, count)
+		}
+	}
+	if len(summary.Errors) > 0 {
+		c.display.Log("\nErrors:")
+		for errType, count := range summary.Errors {
+			c.display.Logf("  %s: %d", errType, count)
+		}
+	}
+}
+
+func (c *ConsoleConnector) printSummary(summary *Summary) {
 	fmt.Println("\n=== Load Test Summary ===")
 	fmt.Printf("Total Requests:  %d\n", summary.TotalRequests)
 	fmt.Printf("Success:         %d\n", summary.SuccessRequests)
@@ -82,7 +117,6 @@ func (c *ConsoleConnector) OnComplete(ctx context.Context, summary *Summary) err
 			fmt.Printf("  %s: %d\n", errType, count)
 		}
 	}
-	return nil
 }
 
 func (c *ConsoleConnector) Close() error {

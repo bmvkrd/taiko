@@ -11,14 +11,20 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bmvkrd/livelog"
 	"github.com/bmvkrd/taiko/internal/config"
 	"github.com/bmvkrd/taiko/internal/engine"
 	_ "github.com/bmvkrd/taiko/internal/engine/grpc"
 	_ "github.com/bmvkrd/taiko/internal/engine/http"
 	_ "github.com/bmvkrd/taiko/internal/engine/kafka"
+	"github.com/bmvkrd/taiko/internal/metrics"
 )
 
 func main() {
+	display := livelog.New(os.Stdout)
+	defer display.Flush()
+	metrics.SetDisplay(display)
+
 	cfg, err := loadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
@@ -38,22 +44,21 @@ func main() {
 		rpsBreakdown = append(rpsBreakdown, fmt.Sprintf("%d", rps))
 	}
 
-	fmt.Printf("LoadEngine Starting...\n")
-	fmt.Printf("Engine: %s\n", cfg.Engine)
-	fmt.Printf("Targets: %d\n", len(cfg.Targets))
+	display.Log("LoadEngine Starting...")
+	display.Logf("Engine: %s", cfg.Engine)
+	display.Logf("Targets: %d", len(cfg.Targets))
 	for i, target := range cfg.Targets {
-		fmt.Printf("  [%d] ", i+1)
-		printTargetInfo(cfg.Engine, target)
+		display.Logf("  [%d] %s", i+1, targetInfo(cfg.Engine, target))
 	}
-	fmt.Printf("Duration: %s\n", cfg.Load.Duration)
+	display.Logf("Duration: %s", cfg.Load.Duration)
 	if len(cfg.Targets) > 1 {
-		fmt.Printf("Target RPS: %d total (%s)\n", totalRPS, strings.Join(rpsBreakdown, " + "))
+		display.Logf("Target RPS: %d total (%s)", totalRPS, strings.Join(rpsBreakdown, " + "))
 	} else {
-		fmt.Printf("Target RPS: %d\n", totalRPS)
+		display.Logf("Target RPS: %d", totalRPS)
 	}
-	fmt.Printf("Workers: auto-scaling\n")
-	fmt.Printf("Metrics: %s\n", cfg.Metrics.Type)
-	fmt.Println(strings.Repeat("-", 50))
+	display.Log("Workers: auto-scaling")
+	display.Logf("Metrics: %s", cfg.Metrics.Type)
+	display.Log(strings.Repeat("-", 50))
 
 	eng, err := engine.Get(cfg)
 	if err != nil {
@@ -70,7 +75,7 @@ func main() {
 
 	go func() {
 		<-sigChan
-		fmt.Println("\n\nReceived interrupt signal. Shutting down gracefully...")
+		display.Log("\nReceived interrupt signal. Shutting down gracefully...")
 		cancel()
 	}()
 
@@ -81,30 +86,29 @@ func main() {
 	}
 }
 
-func printTargetInfo(engineType string, target config.Target) {
+func targetInfo(engineType string, target config.Target) string {
 	switch engineType {
 	case "http":
 		if httpTarget, ok := target.(*config.HTTPTargetConfig); ok {
-			fmt.Printf("%s %s (rps: %d", httpTarget.Method, httpTarget.URL, httpTarget.RPS)
+			s := fmt.Sprintf("%s %s (rps: %d", httpTarget.Method, httpTarget.URL, httpTarget.RPS)
 			if httpTarget.Burst > 1 {
-				fmt.Printf(", burst: %d", httpTarget.Burst)
+				s += fmt.Sprintf(", burst: %d", httpTarget.Burst)
 			}
 			if len(httpTarget.Headers) > 0 {
-				fmt.Printf(", headers: %d", len(httpTarget.Headers))
+				s += fmt.Sprintf(", headers: %d", len(httpTarget.Headers))
 			}
-			fmt.Println(")")
+			return s + ")"
 		}
 	case "grpc":
 		if grpcTarget, ok := target.(*config.GRPCTargetConfig); ok {
-			fmt.Printf("%s/%s @ %s (rps: %d)\n", grpcTarget.Service, grpcTarget.Method, grpcTarget.Endpoint, grpcTarget.RPS)
+			return fmt.Sprintf("%s/%s @ %s (rps: %d)", grpcTarget.Service, grpcTarget.Method, grpcTarget.Endpoint, grpcTarget.RPS)
 		}
 	case "kafka":
 		if kafkaTarget, ok := target.(*config.KafkaTargetConfig); ok {
-			fmt.Printf("topic=%s brokers=%v (rps: %d)\n", kafkaTarget.Topic, kafkaTarget.Brokers, kafkaTarget.RPS)
+			return fmt.Sprintf("topic=%s brokers=%v (rps: %d)", kafkaTarget.Topic, kafkaTarget.Brokers, kafkaTarget.RPS)
 		}
-	default:
-		fmt.Printf("%v (rps: %d)\n", target.ToEngineConfig(), target.GetRPS())
 	}
+	return fmt.Sprintf("%v (rps: %d)", target.ToEngineConfig(), target.GetRPS())
 }
 
 func loadConfig() (*config.Config, error) {

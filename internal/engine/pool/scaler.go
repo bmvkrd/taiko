@@ -58,7 +58,7 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 				improvement := (actualRPS - prevRPS) / prevRPS
 				if improvement < stallImprovementThreshold {
 					// Scaling didn't help - revert to previous worker count
-					fmt.Printf("WARNING: Capacity ceiling reached! Added %d workers but RPS improved only %.1f%%. Reverting to %d workers.\n",
+					fmt.Fprintf(p.logger, "WARNING: Capacity ceiling reached! Added %d workers but RPS improved only %.1f%%. Reverting to %d workers.\n",
 						workersAddedLastCycle, improvement*100, prevWorkerCount)
 					workersToRemove := currentWorkers - prevWorkerCount
 					if workersToRemove > 0 {
@@ -100,7 +100,7 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 							maxScaleUp = min(min(int(float64(baseMaxScaleUp)/performanceRatio), maxScaleUpCap), p.totalRPS)
 						}
 						adjustment = max(1, min(neededWorkers, maxScaleUp))
-						// fmt.Printf("   Scaling UP: Adding %d workers (max: %d, under-performing)\n", adjustment, maxScaleUp)
+						fmt.Fprintf(p.logger, "Scaling UP: Adding %d workers (max: %d, under-performing)\n", adjustment, maxScaleUp)
 					}
 				}
 			} else if performanceRatio > scaleDownThreshold && currentWorkers > 10 {
@@ -111,9 +111,9 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 					if rpsPerWorker > 0 {
 						excessWorkers := int(excess / rpsPerWorker)
 						adjustment = -min(excessWorkers, currentWorkers/4) // Remove up to 25% workers
-						// if adjustment < 0 {
-						// 	fmt.Printf("   Scaling DOWN: Removing %d workers (over-provisioned)\n", -adjustment)
-						// }
+						if adjustment < 0 {
+							fmt.Fprintf(p.logger, "Scaling DOWN: Removing %d workers (over-provisioned)\n", -adjustment)
+						}
 					}
 				}
 			}

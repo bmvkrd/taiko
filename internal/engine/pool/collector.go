@@ -82,7 +82,7 @@ func (p *Pool) collectResults() {
 				}
 
 				if err := p.metricsConnector.OnRequest(context.Background(), m); err != nil {
-					fmt.Printf("Connector (request) error: %v\n", err)
+					fmt.Fprintf(p.logger, "Connector (request) error: %v\n", err)
 				}
 			}
 
@@ -119,7 +119,7 @@ func (p *Pool) collectResults() {
 			// Notify reporting connector
 			if p.metricsConnector != nil {
 				if err := p.metricsConnector.OnInterval(context.Background(), intervalStats); err != nil {
-					fmt.Printf("Connector (interval) error: %v\n", err)
+					fmt.Fprintf(p.logger, "Connector (interval) error: %v\n", err)
 				}
 			}
 
@@ -217,7 +217,7 @@ func (p *Pool) finalizeStats(workerSamples []int, testStart time.Time) {
 	// Notify reporting connector
 	if p.metricsConnector != nil {
 		if err := p.metricsConnector.OnComplete(context.Background(), summary); err != nil {
-			fmt.Printf("Connector (summary) error: %v\n", err)
+			fmt.Fprintf(p.logger, "Connector (summary) error: %v\n", err)
 		}
 	}
 }

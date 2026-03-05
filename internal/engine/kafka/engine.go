@@ -130,6 +130,7 @@ func NewKafkaEngine(cfg *config.Config) (engine.Engine, error) {
 		Targets:          poolTargets,
 		MetricsConnector: metricsConnector,
 		WorkerFunc:       eng.doWork,
+		Logger:           metrics.Writer(),
 	})
 	if err != nil {
 		client.Close()

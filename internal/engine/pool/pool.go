@@ -3,6 +3,8 @@ package pool
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,8 +24,9 @@ type Config struct {
 	Targets          []TargetMeta
 	MetricsConnector metrics.Connector
 	WorkerFunc       WorkerFunc
-	ResultBufferSize int // defaults to 10000 if zero
-	SampleSize       int // defaults to 10000 if zero
+	ResultBufferSize int       // defaults to 10000 if zero
+	SampleSize       int       // defaults to 10000 if zero
+	Logger           io.Writer // defaults to os.Stdout if nil
 }
 
 // Pool manages a dynamic worker pool, result collection, auto-scaling, and stats.
@@ -44,6 +47,7 @@ type Pool struct {
 	// Result pipeline
 	results          chan *engine.Result
 	metricsConnector metrics.Connector
+	logger           io.Writer
 
 	// Statistics
 	stats          *engine.Stats
@@ -82,12 +86,18 @@ func New(cfg Config) (*Pool, error) {
 		sampleSize = 10000
 	}
 
+	logger := cfg.Logger
+	if logger == nil {
+		logger = os.Stdout
+	}
+
 	return &Pool{
 		duration:         cfg.Duration,
 		totalRPS:         totalRPS,
 		targets:          cfg.Targets,
 		doWork:           cfg.WorkerFunc,
 		metricsConnector: cfg.MetricsConnector,
+		logger:           logger,
 		results:          make(chan *engine.Result, resultBufSize),
 		workerControl:    make(chan bool, 1000),
 		sampleSize:       sampleSize,

@@ -1,16 +1,16 @@
 engine: http
 targets:
-  - url: http://localhost:8081/api/endpoint?id={{id}}
+  - url: http://localhost:8081/api/taiko?id={{id}}
     method: POST
     timeout: 5s
     body: '{}'
     headers:
       Content-Type: application/json
-    rps: 500
+    rps: 150000
 load:
   duration: 1m
 metrics:
-  type: console   # "console", "prometheus", or "s3"
+  type: console
 variables:
   - name: id
     type: uuid

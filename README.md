@@ -6,7 +6,6 @@
 
 <h1 align="center">Taiko</h1>
 
-
 A high-performance load testing engine designed for standalone (CLI) or Kubernetes cluster-internal use.
 
 Supports load generation with a pluggable architecture for HTTP, gRPC and Kafka engines.

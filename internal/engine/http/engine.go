@@ -138,6 +138,7 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 		Targets:          poolTargets,
 		MetricsConnector: metricsConnector,
 		WorkerFunc:       eng.doWork,
+		Logger:           metrics.Writer(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("pool creation error: %w", err)
