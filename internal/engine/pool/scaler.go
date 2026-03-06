@@ -32,6 +32,8 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 	var prevRPS float64
 	var prevWorkerCount int
 	var workersAddedLastCycle int
+	var stallCycles int          // consecutive cycles with insufficient RPS improvement
+	var stallStartWorkerCount int // worker count before stall-triggering scale-up
 	capacityReached := false
 
 	for {
@@ -52,26 +54,44 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 			// Calculate performance ratio
 			performanceRatio := actualRPS / targetRPS
 
-			// Check for stalled scaling: we added workers but RPS didn't improve
-			// Only check if we're still below target - reaching target is success, not a stall
-			if workersAddedLastCycle > 0 && prevRPS > 0 && performanceRatio < scaleUpThreshold {
+			// Check for stalled scaling: we added workers but RPS didn't improve.
+			// Only set capacityReached after 3 consecutive stall cycles to avoid
+			// false positives from transient RPS fluctuations.
+			if stallCycles > 0 {
+				// Already investigating a potential stall - check if it persists
+				if performanceRatio >= scaleUpThreshold {
+					// RPS recovered - not a real stall
+					stallCycles = 0
+					capacityReached = false
+				} else {
+					stallCycles++
+					if stallCycles >= 3 {
+						// Confirmed capacity ceiling after 3 consecutive stall cycles
+						workersToRemove := currentWorkers - stallStartWorkerCount
+						if workersToRemove > 0 {
+							fmt.Fprintf(p.logger, "WARNING: Capacity ceiling reached! Stall confirmed over %d consecutive cycles. Reverting %d workers to %d total.\n",
+								stallCycles, workersToRemove, stallStartWorkerCount)
+							p.removeWorkers(workersToRemove)
+							currentWorkers = stallStartWorkerCount
+						}
+						capacityReached = true
+						stallCycles = 0
+					}
+				}
+			} else if workersAddedLastCycle > 0 && prevRPS > 0 && performanceRatio < scaleUpThreshold {
+				// Only check if we're still below target - reaching target is success, not a stall
 				improvement := (actualRPS - prevRPS) / prevRPS
 				if improvement < stallImprovementThreshold {
-					// Scaling didn't help - revert to previous worker count
-					fmt.Fprintf(p.logger, "WARNING: Capacity ceiling reached! Added %d workers but RPS improved only %.1f%%. Reverting to %d workers.\n",
-						workersAddedLastCycle, improvement*100, prevWorkerCount)
-					workersToRemove := currentWorkers - prevWorkerCount
-					if workersToRemove > 0 {
-						p.removeWorkers(workersToRemove)
-						currentWorkers = prevWorkerCount
-					}
-					capacityReached = true
+					// First stall cycle detected - begin multi-cycle confirmation
+					stallCycles = 1
+					stallStartWorkerCount = prevWorkerCount
 				} else {
 					// Scaling was effective, reset capacity flag
 					capacityReached = false
 				}
 			} else if performanceRatio >= scaleUpThreshold {
-				// Target reached - clear capacity flag
+				// Target reached - clear capacity flag and stall counter
+				stallCycles = 0
 				capacityReached = false
 			}
 
@@ -81,7 +101,7 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 			// Dynamic scaling logic
 			var adjustment int
 
-			if performanceRatio < scaleUpThreshold && !capacityReached {
+			if performanceRatio < scaleUpThreshold && !capacityReached && stallCycles == 0 {
 				// Don't scale up if we already have enough workers (more than target RPS)
 				// At low RPS, the rate limiter is the bottleneck, not worker count
 				if currentWorkers >= p.totalRPS {
