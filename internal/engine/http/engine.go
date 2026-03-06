@@ -51,6 +51,7 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 	// Build HTTP targets and pool target metadata
 	var httpTargets []*httpTarget
 	var poolTargets []pool.TargetMeta
+	var totalRPS int
 	var maxTimeout time.Duration = 30 * time.Second
 
 	for i, t := range cfg.Targets {
@@ -94,6 +95,7 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 			RPS:     httpCfg.RPS,
 			Limiter: rate.NewLimiter(rate.Limit(httpCfg.RPS), httpCfg.GetBurst()),
 		})
+		totalRPS += httpCfg.RPS
 	}
 
 	// Initialize metrics connector from config
@@ -121,9 +123,9 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 		client: &http.Client{
 			Timeout: maxTimeout,
 			Transport: &http.Transport{
-				MaxIdleConns:        1000,
-				MaxIdleConnsPerHost: 1000,
-				MaxConnsPerHost:     2000,
+				MaxIdleConns:        0,
+				MaxIdleConnsPerHost: totalRPS,
+				MaxConnsPerHost:     0,
 				IdleConnTimeout:     90 * time.Second,
 				DisableKeepAlives:   false,
 				DisableCompression:  false,
@@ -168,7 +170,7 @@ func (e *HTTPEngine) Close() error {
 }
 
 // doWork performs a single HTTP request to the target at the given index.
-func (e *HTTPEngine) doWork(_ context.Context, targetIndex int) *engine.Result {
+func (e *HTTPEngine) doWork(ctx context.Context, targetIndex int) *engine.Result {
 	target := e.targets[targetIndex]
 
 	// Generate values once for this request and apply to all templates
@@ -189,7 +191,7 @@ func (e *HTTPEngine) doWork(_ context.Context, targetIndex int) *engine.Result {
 		bodyReader = strings.NewReader(body)
 	}
 
-	req, err := http.NewRequest(target.method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, target.method, url, bodyReader)
 	if err != nil {
 		result.Error = err
 		result.Duration = time.Since(start)

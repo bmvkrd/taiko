@@ -183,6 +183,12 @@ func (p *Pool) worker(ctx context.Context, id int) {
 
 			// Delegate to protocol-specific work function
 			result := p.doWork(ctx, targetIndex)
+
+			// Discard results from requests interrupted by context cancellation
+			if ctx.Err() != nil {
+				return
+			}
+
 			atomic.AddInt64(&p.requestCounter, 1)
 
 			// Send result to collector

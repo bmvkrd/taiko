@@ -6,7 +6,8 @@ targets:
     body: '{}'
     headers:
       Content-Type: application/json
-    rps: 15
+    rps: 15000
+    burst: 1000
 load:
   duration: 1m
 metrics:
