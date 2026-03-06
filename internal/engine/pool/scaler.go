@@ -115,12 +115,12 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 						neededWorkers := int(deficit / rpsPerWorker)
 						// Scale more aggressively when far from target: maxScaleUp increases as ratio decreases
 						// Also cap by target RPS to avoid overshooting for low RPS targets
-						maxScaleUp := baseMaxScaleUp
-						if performanceRatio > 0 {
-							maxScaleUp = min(min(int(float64(baseMaxScaleUp)/performanceRatio), maxScaleUpCap), p.totalRPS)
-						}
-						adjustment = max(1, min(neededWorkers, maxScaleUp))
-						fmt.Fprintf(p.logger, "Scaling UP: Adding %d workers (max: %d, under-performing)\n", adjustment, maxScaleUp)
+						// Cap workers added per cycle. neededWorkers already shrinks as
+					// we approach the target, so maxScaleUp only needs to bound the
+					// far-from-target case — no need to reduce it based on ratio.
+					maxScaleUp := min(maxScaleUpCap, p.totalRPS)
+					adjustment = max(1, min(neededWorkers, maxScaleUp))
+						fmt.Fprintf(p.logger, "Scaling UP: Adding %d workers (cap: %d, under-performing)\n", adjustment, maxScaleUp)
 					}
 				}
 			} else if performanceRatio > scaleDownThreshold && currentWorkers > 10 {
