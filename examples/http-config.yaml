@@ -7,7 +7,6 @@ targets:
     headers:
       Content-Type: application/json
     rps: 1500
-    burst: 1000
 load:
   duration: 1m
 metrics:

@@ -26,7 +26,6 @@ type Target interface {
 	ToEngineConfig() map[string]string
 	Validate() error
 	GetRPS() int
-	GetBurst() int
 }
 
 type HTTPTargetConfig struct {
@@ -36,7 +35,6 @@ type HTTPTargetConfig struct {
 	Body    string            `yaml:"body"`
 	Headers map[string]string `yaml:"headers"`
 	RPS     int               `yaml:"rps"`
-	Burst   int               `yaml:"burst"`
 }
 
 type GRPCTargetConfig struct {
@@ -47,7 +45,6 @@ type GRPCTargetConfig struct {
 	Metadata   map[string]string `yaml:"metadata"`
 	Payload    string            `yaml:"payload"`
 	RPS        int               `yaml:"rps"`
-	Burst      int               `yaml:"burst"`
 	ProtoFiles []string          `yaml:"proto_files"`
 }
 
@@ -58,7 +55,6 @@ type KafkaTargetConfig struct {
 	Value   string            `yaml:"value"`
 	Headers map[string]string `yaml:"headers"`
 	RPS     int               `yaml:"rps"`
-	Burst   int               `yaml:"burst"`
 }
 
 type ParamType string
@@ -95,13 +91,6 @@ func (h *HTTPTargetConfig) Validate() error {
 
 func (h *HTTPTargetConfig) GetRPS() int {
 	return h.RPS
-}
-
-func (h *HTTPTargetConfig) GetBurst() int {
-	if h.Burst <= 0 {
-		return 1
-	}
-	return h.Burst
 }
 
 func (g *GRPCTargetConfig) ToEngineConfig() map[string]string {
@@ -142,13 +131,6 @@ func (g *GRPCTargetConfig) GetRPS() int {
 	return g.RPS
 }
 
-func (g *GRPCTargetConfig) GetBurst() int {
-	if g.Burst <= 0 {
-		return 1
-	}
-	return g.Burst
-}
-
 func (k *KafkaTargetConfig) ToEngineConfig() map[string]string {
 	cfg := map[string]string{
 		"brokers": strings.Join(k.Brokers, ","),
@@ -177,13 +159,6 @@ func (k *KafkaTargetConfig) Validate() error {
 
 func (k *KafkaTargetConfig) GetRPS() int {
 	return k.RPS
-}
-
-func (k *KafkaTargetConfig) GetBurst() int {
-	if k.Burst <= 0 {
-		return 1
-	}
-	return k.Burst
 }
 
 type TargetParser func(raw map[string]interface{}) (Target, error)
@@ -221,9 +196,6 @@ func parseHTTPTarget(raw map[string]interface{}) (Target, error) {
 	}
 	if v, ok := raw["rps"].(int); ok {
 		cfg.RPS = v
-	}
-	if v, ok := raw["burst"].(int); ok {
-		cfg.Burst = v
 	}
 	if headers, ok := raw["headers"].(map[interface{}]interface{}); ok {
 		for k, v := range headers {
@@ -268,9 +240,6 @@ func parseGRPCTarget(raw map[string]interface{}) (Target, error) {
 	if v, ok := raw["rps"].(int); ok {
 		cfg.RPS = v
 	}
-	if v, ok := raw["burst"].(int); ok {
-		cfg.Burst = v
-	}
 	if metadata, ok := raw["metadata"].(map[interface{}]interface{}); ok {
 		for k, v := range metadata {
 			if ks, ok := k.(string); ok {
@@ -314,9 +283,6 @@ func parseKafkaTarget(raw map[string]interface{}) (Target, error) {
 	}
 	if v, ok := raw["rps"].(int); ok {
 		cfg.RPS = v
-	}
-	if v, ok := raw["burst"].(int); ok {
-		cfg.Burst = v
 	}
 
 	if brokers, ok := raw["brokers"].([]interface{}); ok {

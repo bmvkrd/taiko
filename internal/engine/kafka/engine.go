@@ -75,7 +75,7 @@ func NewKafkaEngine(cfg *config.Config) (engine.Engine, error) {
 
 		poolTargets = append(poolTargets, pool.TargetMeta{
 			RPS:     kafkaCfg.RPS,
-			Limiter: rate.NewLimiter(rate.Limit(kafkaCfg.RPS), kafkaCfg.GetBurst()),
+			Limiter: rate.NewLimiter(rate.Limit(kafkaCfg.RPS), 1),
 		})
 
 		for _, b := range kafkaCfg.Brokers {

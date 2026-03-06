@@ -36,7 +36,6 @@ The HTTP engine sends requests to one or more HTTP endpoints. Multiple targets a
 | `body` | string | no | Request body. Supports `{{variable}}` template substitution. |
 | `headers` | map | no | HTTP headers as key-value pairs. |
 | `rps` | int | yes | Target requests per second for this endpoint. |
-| `burst` | int | no | Token bucket burst size for the rate limiter (default: 1). |
 
 ### Example HTTP configuration
 
@@ -75,7 +74,6 @@ The gRPC engine calls unary RPC methods on one or more gRPC services. Service sc
 | `metadata` | map | no | gRPC metadata headers as key-value pairs. Values support `{{variable}}` substitution. |
 | `timeout` | duration | no | Per-request timeout (default: `30s`). |
 | `rps` | int | yes | Target requests per second. |
-| `burst` | int | no | Token bucket burst size for the rate limiter (default: 1). |
 
 ### Example gRPC configuration
 
@@ -113,7 +111,6 @@ The Kafka engine produces messages to one or more Kafka topics. A single shared 
 | `value` | string | no | Message value template. Supports `{{variable}}` substitution. |
 | `headers` | map | no | Kafka record headers as key-value pairs. Values support `{{variable}}` substitution. |
 | `rps` | int | yes | Target messages per second. |
-| `burst` | int | no | Token bucket burst size for the rate limiter (default: 1). |
 
 ### Example Kafka configuration
 

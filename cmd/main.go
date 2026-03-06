@@ -91,9 +91,6 @@ func targetInfo(engineType string, target config.Target) string {
 	case "http":
 		if httpTarget, ok := target.(*config.HTTPTargetConfig); ok {
 			s := fmt.Sprintf("%s %s (rps: %d", httpTarget.Method, httpTarget.URL, httpTarget.RPS)
-			if httpTarget.Burst > 1 {
-				s += fmt.Sprintf(", burst: %d", httpTarget.Burst)
-			}
 			if len(httpTarget.Headers) > 0 {
 				s += fmt.Sprintf(", headers: %d", len(httpTarget.Headers))
 			}

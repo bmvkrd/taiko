@@ -112,7 +112,7 @@ func NewGRPCEngine(cfg *config.Config) (engine.Engine, error) {
 
 		poolTargets = append(poolTargets, pool.TargetMeta{
 			RPS:     grpcCfg.RPS,
-			Limiter: rate.NewLimiter(rate.Limit(grpcCfg.RPS), grpcCfg.GetBurst()),
+			Limiter: rate.NewLimiter(rate.Limit(grpcCfg.RPS), 1),
 		})
 	}
 

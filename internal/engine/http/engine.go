@@ -93,7 +93,7 @@ func NewHTTPEngine(cfg *config.Config) (engine.Engine, error) {
 
 		poolTargets = append(poolTargets, pool.TargetMeta{
 			RPS:     httpCfg.RPS,
-			Limiter: rate.NewLimiter(rate.Limit(httpCfg.RPS), httpCfg.GetBurst()),
+			Limiter: rate.NewLimiter(rate.Limit(httpCfg.RPS), 1),
 		})
 		totalRPS += httpCfg.RPS
 	}
