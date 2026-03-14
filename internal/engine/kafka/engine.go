@@ -7,6 +7,7 @@ import (
 
 	"github.com/bmvkrd/taiko/internal/config"
 	"github.com/bmvkrd/taiko/internal/engine"
+	avroenc "github.com/bmvkrd/taiko/internal/engine/kafka/avro"
 	"github.com/bmvkrd/taiko/internal/engine/pool"
 	"github.com/bmvkrd/taiko/internal/metrics"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -19,10 +20,12 @@ func init() {
 
 // kafkaTarget holds Kafka-specific per-target state.
 type kafkaTarget struct {
-	topic   string
-	key     string
-	value   string
-	headers map[string]string
+	topic           string
+	key             string
+	value           string
+	headers         map[string]string
+	keySerializer   *avroenc.Serializer
+	valueSerializer *avroenc.Serializer
 }
 
 // KafkaEngine implements the Kafka load testing protocol.
@@ -66,12 +69,47 @@ func NewKafkaEngine(cfg *config.Config) (engine.Engine, error) {
 			return nil, fmt.Errorf("target[%d]: kafka engine requires 'rps' > 0", i)
 		}
 
-		kafkaTargets = append(kafkaTargets, &kafkaTarget{
+		kt := &kafkaTarget{
 			topic:   kafkaCfg.Topic,
 			key:     kafkaCfg.Key,
 			value:   kafkaCfg.Value,
 			headers: kafkaCfg.Headers,
-		})
+		}
+
+		var regCfg *avroenc.RegistryConfig
+		if kafkaCfg.SchemaRegistry != nil {
+			regCfg = &avroenc.RegistryConfig{
+				URL:      kafkaCfg.SchemaRegistry.URL,
+				Username: kafkaCfg.SchemaRegistry.Username,
+				Password: kafkaCfg.SchemaRegistry.Password,
+			}
+		}
+
+		if kafkaCfg.KeySchema != nil {
+			s, err := avroenc.ResolveSchema(context.Background(), regCfg, avroenc.SchemaSource{
+				Subject: kafkaCfg.KeySchema.Subject,
+				Version: kafkaCfg.KeySchema.Version,
+				File:    kafkaCfg.KeySchema.File,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("target[%d]: key schema: %w", i, err)
+			}
+			kt.keySerializer = s
+		}
+
+		if kafkaCfg.ValueSchema != nil {
+			s, err := avroenc.ResolveSchema(context.Background(), regCfg, avroenc.SchemaSource{
+				Subject: kafkaCfg.ValueSchema.Subject,
+				Version: kafkaCfg.ValueSchema.Version,
+				File:    kafkaCfg.ValueSchema.File,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("target[%d]: value schema: %w", i, err)
+			}
+			kt.valueSerializer = s
+		}
+
+		kafkaTargets = append(kafkaTargets, kt)
 
 		poolTargets = append(poolTargets, pool.TargetMeta{
 			RPS:     kafkaCfg.RPS,
@@ -177,12 +215,36 @@ func (e *KafkaEngine) doWork(ctx context.Context, targetIndex int) *engine.Resul
 		TargetURL: target.topic,
 	}
 
+	var keyBytes []byte
+	if key != "" {
+		if target.keySerializer != nil {
+			encoded, err := target.keySerializer.Encode(key)
+			if err != nil {
+				result.Error = fmt.Errorf("key avro encoding: %w", err)
+				return result
+			}
+			keyBytes = encoded
+		} else {
+			keyBytes = []byte(key)
+		}
+	}
+
+	var valueBytes []byte
+	if target.valueSerializer != nil {
+		encoded, err := target.valueSerializer.Encode(value)
+		if err != nil {
+			result.Error = fmt.Errorf("value avro encoding: %w", err)
+			return result
+		}
+		valueBytes = encoded
+	} else {
+		valueBytes = []byte(value)
+	}
+
 	record := &kgo.Record{
 		Topic: target.topic,
-		Value: []byte(value),
-	}
-	if key != "" {
-		record.Key = []byte(key)
+		Value: valueBytes,
+		Key:   keyBytes,
 	}
 	for k, v := range target.headers {
 		record.Headers = append(record.Headers, kgo.RecordHeader{

@@ -5,8 +5,10 @@ go 1.25.3
 require (
 	github.com/bmvkrd/livelog v1.0.1
 	github.com/bufbuild/protocompile v0.14.1
+	github.com/hamba/avro/v2 v2.31.0
 	github.com/jhump/protoreflect/v2 v2.0.0-beta.1
 	github.com/twmb/franz-go v1.20.7
+	github.com/twmb/franz-go/pkg/sr v1.7.0
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/time v0.14.0
 	google.golang.org/grpc v1.79.1
@@ -14,8 +16,12 @@ require (
 )
 
 require (
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.25 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/twmb/franz-go/pkg/kmsg v1.12.0 // indirect

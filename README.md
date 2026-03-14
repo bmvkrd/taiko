@@ -112,6 +112,32 @@ The Kafka engine produces messages to one or more Kafka topics. A single shared 
 | `headers` | map | no | Kafka record headers as key-value pairs. Values support `{{variable}}` substitution. |
 | `rps` | int | yes | Target messages per second. |
 
+### Avro & Schema Registry support
+
+The Kafka engine optionally supports Avro serialization with Confluent Schema Registry. When configured, key and/or value templates are treated as JSON, encoded to Avro binary using the specified schema, and (when fetched from a registry) prepended with the Confluent wire format header (`0x00` + 4-byte schema ID).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `schema_registry` | object | no | Schema Registry connection settings (see below). |
+| `key_schema` | object | no | Schema to use for encoding the message key as Avro. |
+| `value_schema` | object | no | Schema to use for encoding the message value as Avro. |
+
+**`schema_registry` fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Schema Registry URL (e.g. `http://schema-registry:8081`). |
+| `username` | string | no | Basic auth username. |
+| `password` | string | no | Basic auth password. |
+
+**`key_schema` / `value_schema` fields** (specify either `subject` or `file`, not both):
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `subject` | string | no | Schema Registry subject name (requires `schema_registry`). |
+| `version` | int | no | Schema version to fetch (defaults to latest). |
+| `file` | string | no | Path to a local `.avsc` file. No wire format header is added. |
+
 ### Example Kafka configuration
 
 ```yaml
@@ -131,6 +157,30 @@ variables:
     type: timestamp
     generator:
       format: rfc3339
+```
+
+### Example Kafka with Avro and Schema Registry
+
+```yaml
+engine: kafka
+targets:
+  - brokers: ["localhost:9092"]
+    topic: user-events
+    key: "{{user_id}}"
+    value: '{"id": "{{event_id}}", "user_id": {{user_id}}, "action": "click"}'
+    rps: 500
+    schema_registry:
+      url: "http://schema-registry:8081"
+    value_schema:
+      subject: user-events-value
+load:
+  duration: 60s
+variables:
+  - name: user_id
+    type: int_range
+    generator: { mode: rnd, min: 1, max: 1000000 }
+  - name: event_id
+    type: uuid
 ```
 
 ## Dynamic Variables

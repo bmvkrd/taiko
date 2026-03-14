@@ -48,13 +48,28 @@ type GRPCTargetConfig struct {
 	ProtoFiles []string          `yaml:"proto_files"`
 }
 
+type SchemaRegistryConfig struct {
+	URL      string `yaml:"url"`
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+type SchemaConfig struct {
+	Subject string `yaml:"subject"`
+	Version int    `yaml:"version"` // 0 means latest
+	File    string `yaml:"file"`
+}
+
 type KafkaTargetConfig struct {
-	Brokers []string          `yaml:"brokers"`
-	Topic   string            `yaml:"topic"`
-	Key     string            `yaml:"key"`
-	Value   string            `yaml:"value"`
-	Headers map[string]string `yaml:"headers"`
-	RPS     int               `yaml:"rps"`
+	Brokers        []string              `yaml:"brokers"`
+	Topic          string                `yaml:"topic"`
+	Key            string                `yaml:"key"`
+	Value          string                `yaml:"value"`
+	Headers        map[string]string     `yaml:"headers"`
+	RPS            int                   `yaml:"rps"`
+	SchemaRegistry *SchemaRegistryConfig `yaml:"schema_registry"`
+	KeySchema      *SchemaConfig         `yaml:"key_schema"`
+	ValueSchema    *SchemaConfig         `yaml:"value_schema"`
 }
 
 type ParamType string
@@ -153,6 +168,35 @@ func (k *KafkaTargetConfig) Validate() error {
 	}
 	if k.RPS <= 0 {
 		return fmt.Errorf("kafka target requires 'rps' field > 0")
+	}
+	if err := validateSchemaConfig("key_schema", k.KeySchema, k.SchemaRegistry); err != nil {
+		return err
+	}
+	if err := validateSchemaConfig("value_schema", k.ValueSchema, k.SchemaRegistry); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateSchemaConfig(field string, sc *SchemaConfig, sr *SchemaRegistryConfig) error {
+	if sc == nil {
+		return nil
+	}
+	if sc.Subject != "" && sc.File != "" {
+		return fmt.Errorf("%s: 'subject' and 'file' are mutually exclusive", field)
+	}
+	if sc.Subject == "" && sc.File == "" {
+		return fmt.Errorf("%s: must specify either 'subject' or 'file'", field)
+	}
+	if sc.Subject != "" {
+		if sr == nil || sr.URL == "" {
+			return fmt.Errorf("%s: 'schema_registry.url' is required when using 'subject'", field)
+		}
+	}
+	if sc.File != "" {
+		if _, err := os.Stat(sc.File); err != nil {
+			return fmt.Errorf("%s: cannot access schema file %q: %w", field, sc.File, err)
+		}
 	}
 	return nil
 }
@@ -310,7 +354,63 @@ func parseKafkaTarget(raw map[string]interface{}) (Target, error) {
 		}
 	}
 
+	cfg.SchemaRegistry = parseSchemaRegistryConfig(raw)
+	cfg.KeySchema = parseSchemaConfig(raw, "key_schema")
+	cfg.ValueSchema = parseSchemaConfig(raw, "value_schema")
+
 	return cfg, nil
+}
+
+func parseSchemaRegistryConfig(raw map[string]interface{}) *SchemaRegistryConfig {
+	sr := extractMap(raw, "schema_registry")
+	if sr == nil {
+		return nil
+	}
+	cfg := &SchemaRegistryConfig{}
+	if v, ok := sr["url"].(string); ok {
+		cfg.URL = v
+	}
+	if v, ok := sr["username"].(string); ok {
+		cfg.Username = v
+	}
+	if v, ok := sr["password"].(string); ok {
+		cfg.Password = v
+	}
+	return cfg
+}
+
+func parseSchemaConfig(raw map[string]interface{}, key string) *SchemaConfig {
+	sc := extractMap(raw, key)
+	if sc == nil {
+		return nil
+	}
+	cfg := &SchemaConfig{}
+	if v, ok := sc["subject"].(string); ok {
+		cfg.Subject = v
+	}
+	if v, ok := sc["version"].(int); ok {
+		cfg.Version = v
+	}
+	if v, ok := sc["file"].(string); ok {
+		cfg.File = v
+	}
+	return cfg
+}
+
+func extractMap(raw map[string]interface{}, key string) map[string]interface{} {
+	if m, ok := raw[key].(map[interface{}]interface{}); ok {
+		result := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			if ks, ok := k.(string); ok {
+				result[ks] = v
+			}
+		}
+		return result
+	}
+	if m, ok := raw[key].(map[string]interface{}); ok {
+		return m
+	}
+	return nil
 }
 
 type LoadConfig struct {

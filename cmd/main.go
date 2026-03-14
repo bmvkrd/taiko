@@ -102,10 +102,24 @@ func targetInfo(engineType string, target config.Target) string {
 		}
 	case "kafka":
 		if kafkaTarget, ok := target.(*config.KafkaTargetConfig); ok {
-			return fmt.Sprintf("topic=%s brokers=%v (rps: %d)", kafkaTarget.Topic, kafkaTarget.Brokers, kafkaTarget.RPS)
+			s := fmt.Sprintf("topic=%s brokers=%v", kafkaTarget.Topic, kafkaTarget.Brokers)
+			if kafkaTarget.KeySchema != nil {
+				s += fmt.Sprintf(" key_schema=%s", schemaLabel(kafkaTarget.KeySchema))
+			}
+			if kafkaTarget.ValueSchema != nil {
+				s += fmt.Sprintf(" value_schema=%s", schemaLabel(kafkaTarget.ValueSchema))
+			}
+			return s + fmt.Sprintf(" (rps: %d)", kafkaTarget.RPS)
 		}
 	}
 	return fmt.Sprintf("%v (rps: %d)", target.ToEngineConfig(), target.GetRPS())
+}
+
+func schemaLabel(sc *config.SchemaConfig) string {
+	if sc.Subject != "" {
+		return sc.Subject
+	}
+	return sc.File
 }
 
 func loadConfig() (*config.Config, error) {

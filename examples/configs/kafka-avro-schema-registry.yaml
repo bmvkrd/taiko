@@ -1,0 +1,22 @@
+engine: kafka
+targets:
+  - brokers: ["localhost:9092"]
+    topic: user-events
+    key: "{{user_id}}"
+    value: '{"id": "{{event_id}}", "user_id": {{user_id}}, "action": "click"}'
+    rps: 500
+    schema_registry:
+      url: "http://schema-registry:8081"
+      username: "sr-user"          # optional
+      password: "sr-pass"          # optional
+    value_schema:
+      subject: user-events-value   # fetches latest version from registry
+      # version: 3                 # optional: pin to a specific version
+load:
+  duration: 60s
+variables:
+  - name: user_id
+    type: int_range
+    generator: { mode: rnd, min: 1, max: 1000000 }
+  - name: event_id
+    type: uuid
