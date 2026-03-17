@@ -19,7 +19,7 @@ type ConsoleConnector struct {
 }
 
 func NewConsoleConnector() Connector {
-	return &ConsoleConnector{display: globalDisplay}
+	return &ConsoleConnector{display: globalDisplay.Load()}
 }
 
 func (c *ConsoleConnector) Init(config map[string]string) error {

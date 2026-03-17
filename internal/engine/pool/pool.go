@@ -38,9 +38,9 @@ type Pool struct {
 	doWork   WorkerFunc
 
 	// Worker management
-	activeWorkers    int32 // atomic
-	requestCounter   int64 // atomic
-	lastRequestCount int64
+	activeWorkers    int32        // atomic
+	requestCounter   int64        // atomic
+	lastRequestCount atomic.Int64 // atomic — read/written by scaler goroutine
 	workerControl    chan bool
 	workerWg         sync.WaitGroup
 
@@ -119,12 +119,13 @@ func (p *Pool) Run(ctx context.Context) (*engine.Stats, error) {
 	testCtx, cancel := context.WithTimeout(ctx, p.duration)
 	defer cancel()
 
-	// Start result collector
+	// Start result collector — use parent ctx (not testCtx) so that
+	// OnComplete can still run after the test duration expires.
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		p.collectResults()
+		p.collectResults(ctx)
 	}()
 
 	// Start dynamic scaler
