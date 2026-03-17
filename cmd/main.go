@@ -37,7 +37,7 @@ func main() {
 	}
 
 	var totalRPS int
-	var rpsBreakdown []string
+	rpsBreakdown := make([]string, 0, len(cfg.Targets))
 	for _, target := range cfg.Targets {
 		rps := target.GetRPS()
 		totalRPS += rps

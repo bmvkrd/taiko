@@ -61,69 +61,128 @@ func (s *Substitutor) Apply(template string, values map[string]string) string {
 func fromVariable(v config.Variable) (generator.Generator, error) {
 	switch v.Type {
 	case string(generator.IntRangeType):
-		mode := generator.Mode(v.Generator["mode"].(string))
-		min := toInt(v.Generator["min"])
-		max := toInt(v.Generator["max"])
-		return generator.NewIntRangeGenerator(min, max, mode)
+		modeStr, err := stringFromMap(v.Generator, "mode")
+		if err != nil {
+			return nil, err
+		}
+		min, err := intFromMap(v.Generator, "min")
+		if err != nil {
+			return nil, err
+		}
+		max, err := intFromMap(v.Generator, "max")
+		if err != nil {
+			return nil, err
+		}
+		return generator.NewIntRangeGenerator(min, max, generator.Mode(modeStr))
 	case string(generator.IntSetType):
-		mode := generator.Mode(v.Generator["mode"].(string))
-		values := toIntSlice(v.Generator["values"])
-		return generator.NewIntSetGenerator(values, mode)
+		modeStr, err := stringFromMap(v.Generator, "mode")
+		if err != nil {
+			return nil, err
+		}
+		values, err := intSliceFromMap(v.Generator, "values")
+		if err != nil {
+			return nil, err
+		}
+		return generator.NewIntSetGenerator(values, generator.Mode(modeStr))
 	case string(generator.UUIDType):
 		return generator.NewUUIDGenerator(), nil
 	case string(generator.StringSetType):
-		mode := generator.Mode(v.Generator["mode"].(string))
-		values := toStringSlice(v.Generator["values"])
-		return generator.NewStringSetGenerator(values, mode)
+		modeStr, err := stringFromMap(v.Generator, "mode")
+		if err != nil {
+			return nil, err
+		}
+		values, err := stringSliceFromMap(v.Generator, "values")
+		if err != nil {
+			return nil, err
+		}
+		return generator.NewStringSetGenerator(values, generator.Mode(modeStr))
 	case string(generator.TimestampType):
-		format := generator.TimestampFormat(v.Generator["format"].(string))
-		return generator.NewTimestampGenerator(format)
+		formatStr, err := stringFromMap(v.Generator, "format")
+		if err != nil {
+			return nil, err
+		}
+		return generator.NewTimestampGenerator(generator.TimestampFormat(formatStr))
 	default:
 		return nil, fmt.Errorf("unknown generator type: %s", v.Type)
 	}
 }
 
-func toInt(v any) int {
+func stringFromMap(m map[string]any, key string) (string, error) {
+	v, ok := m[key]
+	if !ok {
+		return "", fmt.Errorf("missing required field %q", key)
+	}
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("field %q must be a string, got %T", key, v)
+	}
+	return s, nil
+}
+
+func intFromMap(m map[string]any, key string) (int, error) {
+	v, ok := m[key]
+	if !ok {
+		return 0, fmt.Errorf("missing required field %q", key)
+	}
 	switch val := v.(type) {
 	case int:
-		return val
+		return val, nil
 	case int64:
-		return int(val)
+		return int(val), nil
 	case float64:
-		return int(val)
+		return int(val), nil
 	default:
-		return 0
+		return 0, fmt.Errorf("field %q must be a number, got %T", key, v)
 	}
 }
 
-func toIntSlice(v any) []int {
+func intSliceFromMap(m map[string]any, key string) ([]int, error) {
+	v, ok := m[key]
+	if !ok {
+		return nil, fmt.Errorf("missing required field %q", key)
+	}
 	switch val := v.(type) {
 	case []int:
-		return val
+		return val, nil
 	case []any:
 		result := make([]int, len(val))
 		for i, item := range val {
-			result[i] = toInt(item)
+			switch n := item.(type) {
+			case int:
+				result[i] = n
+			case int64:
+				result[i] = int(n)
+			case float64:
+				result[i] = int(n)
+			default:
+				return nil, fmt.Errorf("field %q[%d] must be a number, got %T", key, i, item)
+			}
 		}
-		return result
+		return result, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("field %q must be an array, got %T", key, v)
 	}
 }
 
-func toStringSlice(v any) []string {
+func stringSliceFromMap(m map[string]any, key string) ([]string, error) {
+	v, ok := m[key]
+	if !ok {
+		return nil, fmt.Errorf("missing required field %q", key)
+	}
 	switch val := v.(type) {
 	case []string:
-		return val
+		return val, nil
 	case []any:
 		result := make([]string, len(val))
 		for i, item := range val {
-			if s, ok := item.(string); ok {
-				result[i] = s
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("field %q[%d] must be a string, got %T", key, i, item)
 			}
+			result[i] = s
 		}
-		return result
+		return result, nil
 	default:
-		return nil
+		return nil, fmt.Errorf("field %q must be an array, got %T", key, v)
 	}
 }

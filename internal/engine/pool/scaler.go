@@ -45,11 +45,11 @@ func (p *Pool) dynamicScaler(ctx context.Context) {
 			currentRequests := atomic.LoadInt64(&p.requestCounter)
 
 			// Calculate actual RPS over the interval
-			requestsSinceLastCheck := currentRequests - p.lastRequestCount
+			requestsSinceLastCheck := currentRequests - p.lastRequestCount.Load()
 			actualRPS := float64(requestsSinceLastCheck) / 2.0 // 2 second interval
 			targetRPS := float64(p.totalRPS)
 
-			p.lastRequestCount = currentRequests
+			p.lastRequestCount.Store(currentRequests)
 
 			// Calculate performance ratio
 			performanceRatio := actualRPS / targetRPS

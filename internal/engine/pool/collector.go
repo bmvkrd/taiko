@@ -3,6 +3,7 @@ package pool
 import (
 	"context"
 	"fmt"
+	mathrand "math/rand/v2"
 	"sort"
 	"sync/atomic"
 	"time"
@@ -11,12 +12,13 @@ import (
 )
 
 // collectResults aggregates results and streams to connectors.
-func (p *Pool) collectResults() {
+// ctx is used for metrics connector calls so they respect test cancellation.
+func (p *Pool) collectResults(ctx context.Context) {
 	intervalTicker := time.NewTicker(1 * time.Second)
 	defer intervalTicker.Stop()
 
-	if p.metricsConnector != nil { 	// Initial ticker display
-		if err := p.metricsConnector.OnInterval(context.Background(), &metrics.IntervalStats{}); err != nil {
+	if p.metricsConnector != nil { // Initial ticker display
+		if err := p.metricsConnector.OnInterval(ctx, &metrics.IntervalStats{}); err != nil {
 			fmt.Fprintf(p.logger, "Connector (interval) error: %v\n", err)
 		}
 	}
@@ -37,7 +39,7 @@ func (p *Pool) collectResults() {
 		case result, ok := <-p.results:
 			if !ok {
 				// Channel closed, finalize
-				p.finalizeStats(workerSamples, testStart)
+				p.finalizeStats(ctx, workerSamples, testStart)
 				return
 			}
 
@@ -87,7 +89,7 @@ func (p *Pool) collectResults() {
 					Error:      result.Error,
 				}
 
-				if err := p.metricsConnector.OnRequest(context.Background(), m); err != nil {
+				if err := p.metricsConnector.OnRequest(ctx, m); err != nil {
 					fmt.Fprintf(p.logger, "Connector (request) error: %v\n", err)
 				}
 			}
@@ -124,7 +126,7 @@ func (p *Pool) collectResults() {
 
 			// Notify reporting connector
 			if p.metricsConnector != nil {
-				if err := p.metricsConnector.OnInterval(context.Background(), intervalStats); err != nil {
+				if err := p.metricsConnector.OnInterval(ctx, intervalStats); err != nil {
 					fmt.Fprintf(p.logger, "Connector (interval) error: %v\n", err)
 				}
 			}
@@ -141,7 +143,9 @@ func (p *Pool) collectResults() {
 	}
 }
 
-// addLatencySample adds a latency sample using reservoir sampling.
+// addLatencySample adds a latency sample using Algorithm R (Vitter's reservoir sampling).
+// Every request has an equal probability of being in the final sample, regardless of
+// arrival order, giving unbiased percentile estimates.
 func (p *Pool) addLatencySample(latency time.Duration) {
 	p.sampleMu.Lock()
 	defer p.sampleMu.Unlock()
@@ -150,17 +154,17 @@ func (p *Pool) addLatencySample(latency time.Duration) {
 		// Still filling the reservoir
 		p.latencySamples = append(p.latencySamples, latency)
 	} else {
-		// Reservoir full, randomly replace
+		// Reservoir full — accept with probability sampleSize/totalSeen
 		totalSeen := p.stats.TotalRequests
-		if totalSeen > 0 {
-			idx := int(totalSeen % int64(p.sampleSize))
+		if totalSeen > 0 && mathrand.Int64N(totalSeen) < int64(p.sampleSize) {
+			idx := mathrand.IntN(p.sampleSize)
 			p.latencySamples[idx] = latency
 		}
 	}
 }
 
 // finalizeStats completes statistics calculation.
-func (p *Pool) finalizeStats(workerSamples []int, testStart time.Time) {
+func (p *Pool) finalizeStats(ctx context.Context, workerSamples []int, testStart time.Time) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -222,7 +226,7 @@ func (p *Pool) finalizeStats(workerSamples []int, testStart time.Time) {
 
 	// Notify reporting connector
 	if p.metricsConnector != nil {
-		if err := p.metricsConnector.OnComplete(context.Background(), summary); err != nil {
+		if err := p.metricsConnector.OnComplete(ctx, summary); err != nil {
 			fmt.Fprintf(p.logger, "Connector (summary) error: %v\n", err)
 		}
 	}
